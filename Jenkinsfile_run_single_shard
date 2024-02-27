@@ -1,0 +1,58 @@
+pipeline {
+
+    agent {
+        // Run a docker by default, or run on Jenkins agent with `label {AGENT_LABEL_NAME}`
+        docker { image 'mcr.microsoft.com/playwright:v1.41.1-jammy' }
+    }
+
+    parameters {
+        choice(name: "BROWSER" , choices: ['chromium', 'firefox', 'Safari', 'Google Chrome', 'Google Chrome Beta', 'Microsoft Edge', 'Mobile Chrome', 'Mobile Safari'], description: 'Choose user Browser ( Default = Chromium)')
+    }
+
+    stages {
+        stage("Provision Jenkins Agent") {
+            steps {
+                script {
+                sh 'npm update'
+                sh 'npm install'
+                }
+            }
+        }
+
+        stage("Tests") {
+            steps {
+                script {
+                    sh 'npx playwright test --project=${params.BROWSER}'
+                }
+            }
+        }
+
+        stage("Generate Report") {
+            steps {
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'playwright-report',
+                    reportFiles: "index.html",
+                    reportName: "report",
+                    reportTitles: "TurtleSpeed Run Report"
+                ])
+            }
+        }
+
+        stage("Upload Report To S3") {
+            steps {
+                script {
+                    s3Upload(dir: 'playwright-report', bucket:'${EnterBucketName}/${env.JOB_NAME}/${env.BUILD_NUMBER}')
+                }
+            }
+        }
+  }
+
+  post {
+    always {
+            sendNotifications currentBuild.result
+        }
+    }
+}
